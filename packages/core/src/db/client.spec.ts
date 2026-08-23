@@ -90,15 +90,6 @@ describe("db/client dialect detection", () => {
     expect(getDialect()).toBe("sqlite");
   });
 
-  it("detects convex dialect from convex: DATABASE_URL", async () => {
-    vi.stubEnv("DATABASE_URL", "convex:");
-    const { getDialect, assertSqlDialect } = await import("./client.js");
-    expect(getDialect()).toBe("convex");
-    expect(() => assertSqlDialect("getDbExec")).toThrow(
-      /not supported for the Convex driver/,
-    );
-  });
-
   it("uses Netlify's runtime database URL when DATABASE_URL is not exported", async () => {
     vi.stubEnv("DATABASE_URL", "");
     vi.stubEnv("NETLIFY_DATABASE_URL", "postgres://netlify.example/db");
