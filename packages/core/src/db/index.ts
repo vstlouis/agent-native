@@ -45,6 +45,7 @@ export {
   createDbExec,
   getDatabaseUrl,
   getDialect,
+  assertSqlDialect,
   isLocalDatabase,
   isPostgres,
   assertSchemaMutationAllowed,
