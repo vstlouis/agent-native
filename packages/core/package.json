@@ -486,7 +486,11 @@
     "typescript-7": "catalog:",
     "vite": "catalog:",
     "vitest": "^4.1.5",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@agent-native/db-convex": "workspace:*",
+    "convex-test": "^0.0.36",
+    "@edge-runtime/vm": "^5.0.0",
+    "convex": ">=1"
   },
   "peerDependencies": {
     "@ai-sdk/anthropic": ">=3",

@@ -2,9 +2,12 @@ import { ConvexHttpClient } from "convex/browser";
 import { getTableName } from "drizzle-orm";
 
 /**
- * Minimal transport used by the Drizzle-shaped Convex client.
- * Production uses ConvexHttpClient; tests inject a convex-test transport.
+ * Convex branch for createGetDb — same pattern as the neon/postgres/sqlite
+ * branches in create-get-db.ts: a dialect-specific client, not a sibling db
+ * package. The publishable Convex *component* (tables + mutations) lives in
+ * `@agent-native/db-convex`; this file is only the Node-side caller.
  */
+
 export type ConvexDbTransport = {
   query: (
     fn: "list",
@@ -21,43 +24,30 @@ export type ConvexDbTransport = {
 };
 
 export type CreateConvexDbOptions = {
-  /**
-   * Deployment URL (`https://….convex.cloud`). When omitted, reads
-   * `CONVEX_URL` / `NEXT_PUBLIC_CONVEX_URL`, or the `convex:<url>` DATABASE_URL form.
-   */
   convexUrl?: string;
-  /** Override for convex-test / custom runners. */
   transport?: ConvexDbTransport;
-  /**
-   * Component mount name from the app's `convex.config.ts` (`app.use(...)`).
-   * Default matches `defineComponent("agentNativeDb")`.
-   */
+  /** Mount name from the app's `app.use(...)` — default `agentNativeDb`. */
   componentName?: string;
-  /** Admin / deploy key when calling from a trusted server. */
   adminAuth?: string;
 };
 
-let testTransport: ConvexDbTransport | undefined;
-
 const TEST_TRANSPORT_GLOBAL = Symbol.for(
-  "@agent-native/db-convex.testTransport",
+  "@agent-native/core/db.convexTestTransport",
 );
 
-function readTestTransport(): ConvexDbTransport | undefined {
-  const fromGlobal = (
-    globalThis as Record<symbol, ConvexDbTransport | undefined>
-  )[TEST_TRANSPORT_GLOBAL];
-  return fromGlobal ?? testTransport;
-}
-
-/** Test-only hook so `createGetDb` can hit convex-test without HTTP. */
+/** Test hook so specs can inject convex-test without HTTP. */
 export function setConvexDbTestTransport(
   transport: ConvexDbTransport | undefined,
 ): void {
-  testTransport = transport;
   (globalThis as Record<symbol, ConvexDbTransport | undefined>)[
     TEST_TRANSPORT_GLOBAL
   ] = transport;
+}
+
+function readTestTransport(): ConvexDbTransport | undefined {
+  return (globalThis as Record<symbol, ConvexDbTransport | undefined>)[
+    TEST_TRANSPORT_GLOBAL
+  ];
 }
 
 export function isConvexDatabaseUrl(url: string): boolean {
@@ -91,8 +81,7 @@ export function resolveConvexDeploymentUrl(
     "";
   if (fromEnv) return fromEnv;
   throw new Error(
-    "Convex driver needs CONVEX_URL (or DATABASE_URL=convex:https://….convex.cloud). " +
-      "# ponytail: auto-discovery via CONVEX_DEPLOYMENT, upgrade when wiring convex CLI deploy metadata.",
+    "Convex driver needs CONVEX_URL (or DATABASE_URL=convex:https://….convex.cloud).",
   );
 }
 
@@ -103,14 +92,10 @@ function createHttpTransport(
 ): ConvexDbTransport {
   const client = new ConvexHttpClient(convexUrl);
   if (adminAuth) {
-    // Trusted server path for mutations from Nitro / actions.
     (client as { setAdminAuth?: (token: string) => void }).setAdminAuth?.(
       adminAuth,
     );
   }
-  // Component function paths are opaque strings at the HTTP boundary.
-  // `# ponytail: typed FunctionReference map from codegen, upgrade when the
-  // published package ships generated component API helpers for HTTP clients.`
   const call = client as {
     query: (ref: never, args: never) => Promise<unknown>;
     mutation: (ref: never, args: never) => Promise<unknown>;
@@ -127,10 +112,10 @@ function tableNameOf(table: unknown): string {
   try {
     return getTableName(table as never);
   } catch {
-    const named = table as { [key: symbol]: unknown; name?: string };
+    const named = table as { name?: string };
     if (typeof named?.name === "string") return named.name;
     throw new Error(
-      "Convex driver could not read drizzle table name from argument to insert/select/update/delete.",
+      "Convex driver could not read drizzle table name from insert/select/update/delete.",
     );
   }
 }
@@ -139,20 +124,13 @@ function rowKeyOf(row: Record<string, unknown>): string {
   const key = row.id ?? row._id ?? row.key;
   if (key === undefined || key === null) {
     throw new Error(
-      "Convex driver insert requires an `id` (or `_id`/`key`) field on each row. " +
-        "# ponytail: infer primary key from drizzle table config, upgrade when shim grows getTableConfig support.",
+      "Convex driver insert requires an `id` (or `_id`/`key`) field on each row.",
     );
   }
   return String(key);
 }
 
-/**
- * Best-effort extraction of `{ column: value }` from a drizzle `eq(col, val)`
- * (or a plain object filter). Full SQL expression trees are out of scope.
- *
- * `# ponytail: and/or/gt/inArray, upgrade when the Convex driver owns a real
- * query planner (or delegates to kitcn/orm inside Convex).`
- */
+/** Supports drizzle `eq(col, val)` or a plain `{ column: value }` object. */
 export function parseWhereFilter(condition: unknown): Record<string, unknown> {
   if (
     condition &&
@@ -163,10 +141,7 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
     return { ...(condition as Record<string, unknown>) };
   }
 
-  const sqlObj = condition as {
-    queryChunks?: unknown[];
-  };
-  const chunks = sqlObj?.queryChunks;
+  const chunks = (condition as { queryChunks?: unknown[] })?.queryChunks;
   if (!Array.isArray(chunks)) {
     throw new Error(
       "Convex driver only supports eq(column, value) or plain object filters in where().",
@@ -174,12 +149,11 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
   }
 
   let column: string | undefined;
-  let value: unknown = undefined;
+  let value: unknown;
   let sawValue = false;
   for (const chunk of chunks) {
     if (!chunk || typeof chunk !== "object") continue;
     const col = chunk as { name?: unknown; table?: unknown };
-    // Drizzle column objects carry both `name` and `table`.
     if (
       typeof col.name === "string" &&
       "table" in col &&
@@ -188,8 +162,6 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
       column = col.name;
       continue;
     }
-    // Bound params are `Param` objects with an encoder — ignore StringChunks
-    // that also expose a `value` array for SQL text fragments.
     const param = chunk as { value?: unknown; encoder?: unknown };
     if ("encoder" in param && "value" in param && !sawValue) {
       value = param.value;
@@ -198,7 +170,7 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
   }
   if (!column) {
     throw new Error(
-      "Convex driver could not parse column from where() expression (expected drizzle eq()).",
+      "Convex driver could not parse column from where() (expected drizzle eq()).",
     );
   }
   return { [column]: value };
@@ -253,11 +225,8 @@ function createSelectBuilder(
 }
 
 /**
- * Drizzle-shaped client backed by the agentNativeDb Convex component.
- *
- * Supports the subset templates need for a viability spike:
- * `insert().values()`, `select().from().where().limit()`,
- * `update().set().where()`, `delete().where()`.
+ * Drizzle-shaped client for the Convex dialect: insert / select / update /
+ * delete. Raw SQL and migrations are refused at getDbExec / runMigrations.
  */
 export function createConvexDb(options: CreateConvexDbOptions = {}) {
   const componentName = options.componentName ?? "agentNativeDb";

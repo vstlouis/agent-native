@@ -491,9 +491,8 @@ export function isPostgres(): boolean {
 export function assertSqlDialect(api: string): void {
   if (getDialect() === "convex") {
     throw new Error(
-      `${api} is not supported for the Convex driver — define tables in the ` +
-        `@agent-native/db-convex component schema (or use createGetDb insert/select/update/delete). ` +
-        `# ponytail: SQL DDL/DML bridge on Convex, upgrade when the driver owns raw query execution.`,
+      `${api} is not supported for the Convex driver — use createGetDb ` +
+        `insert/select/update/delete (component schema in @agent-native/db-convex).`,
     );
   }
 }

@@ -524,27 +524,12 @@ export function createGetDb<T extends Record<string, unknown>>(schema: T) {
     const url = getDatabaseUrl("file:./data/app.db");
     const dialect = getDialect();
 
-    // Convex: keep createGetDb() as the app import surface; driver lives in
-    // @agent-native/db-convex (optional peer). Dynamic import so SQL apps pay nothing.
+    // Convex dialect — same lazy-import pattern as postgres/neon/libsql above.
+    // Component tables live in `@agent-native/db-convex`; the Node client is local.
     if (dialect === "convex") {
-      _dbReady = import("@agent-native/db-convex")
-        .then(({ createConvexDb }) => {
-          _db = createConvexDb({
-            convexUrl: undefined,
-            // DATABASE_URL=convex:https://… is resolved inside the driver.
-          });
-          // Stash url on env for the driver resolver when only DATABASE_URL is set.
-          return _db;
-        })
-        .catch((err: unknown) => {
-          const detail = err instanceof Error ? err.message : String(err);
-          throw new Error(
-            `createGetDb: Convex dialect selected (DATABASE_URL=${JSON.stringify(url)}) but ` +
-              `@agent-native/db-convex could not be loaded: ${detail}. ` +
-              `Install it next to @agent-native/core and register the component in convex.config.ts.`,
-            { cause: err instanceof Error ? err : undefined },
-          );
-        });
+      _dbReady = import("./convex-db.js").then(({ createConvexDb }) => {
+        _db = createConvexDb();
+      });
       return _dbReady;
     }
 

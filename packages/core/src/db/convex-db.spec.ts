@@ -1,38 +1,37 @@
-import {
-  setConvexDbTestTransport,
-  type ConvexDbTransport,
-} from "@agent-native/db-convex";
-import { convexTest } from "convex-test";
+/** @vitest-environment edge-runtime */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "./component/_generated/api.js";
-import schema from "./component/schema.js";
-
-const modules = import.meta.glob("./component/**/*.ts");
-
-describe("createGetDb Convex path", () => {
+/**
+ * One insert/read proof for the Convex dialect. Transport is convex-test on
+ * `@agent-native/db-convex`'s component; createGetDb is the app-facing surface.
+ */
+describe("createGetDb Convex dialect", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubEnv("DATABASE_URL", "convex:");
-    setConvexDbTestTransport(undefined);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    const { setConvexDbTestTransport } = await import("./convex-db.js");
     setConvexDbTestTransport(undefined);
     vi.unstubAllEnvs();
     vi.resetModules();
   });
 
-  it("inserts and reads a row through createGetDb", async () => {
+  it("inserts and reads a row", async () => {
+    const { convexTest } = await import("convex-test");
+    const { api, modules, schema } =
+      await import("@agent-native/db-convex/test");
+    const { setConvexDbTestTransport } = await import("./convex-db.js");
+
     const t = convexTest(schema, modules);
-    const transport: ConvexDbTransport = {
+    setConvexDbTestTransport({
       query: (fn, args) =>
         t.query(api.rows[fn], args) as Promise<Record<string, unknown>[]>,
       mutation: (fn, args) => t.mutation(api.rows[fn], args as never),
-    };
-    setConvexDbTestTransport(transport);
+    });
 
-    const { createGetDb } = await import("@agent-native/core/db");
+    const { createGetDb } = await import("./create-get-db.js");
     const { sqliteTable, text } = await import("drizzle-orm/sqlite-core");
     const notes = sqliteTable("notes", {
       id: text("id").primaryKey(),

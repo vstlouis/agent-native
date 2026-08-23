@@ -32,6 +32,13 @@ export type DrizzleDb = Awaited<ReturnType<typeof createDb>>;
 
 export { createGetDb } from "./create-get-db.js";
 export {
+  createConvexDb,
+  setConvexDbTestTransport,
+  type ConvexDb,
+  type ConvexDbTransport,
+  type CreateConvexDbOptions,
+} from "./convex-db.js";
+export {
   deferMigration,
   MIGRATION_DEFERRED,
   runMigrations,
