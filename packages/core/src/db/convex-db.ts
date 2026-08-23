@@ -202,6 +202,28 @@ type ThenableQuery = PromiseLike<Record<string, unknown>[]> & {
   limit: (n: number) => ThenableQuery;
 };
 
+function unsupportedDbMethod(path: string): never {
+  throw new Error(
+    `Convex driver does not support ${path} — only insert/select/update/delete ` +
+      `with eq where/limit (no orderBy/offset/join/returning/onConflict).`,
+  );
+}
+
+/** Missing builder methods throw instead of resolving to undefined. */
+function guardBuilder<T extends object>(target: T, path: string): T {
+  return new Proxy(target, {
+    get(obj, prop, receiver) {
+      if (typeof prop === "symbol") {
+        return Reflect.get(obj, prop, receiver);
+      }
+      if (prop in obj) {
+        return Reflect.get(obj, prop, receiver);
+      }
+      return unsupportedDbMethod(`${path}.${prop}`);
+    },
+  });
+}
+
 function createSelectBuilder(
   transport: ConvexDbTransport,
   table: unknown,
@@ -218,7 +240,7 @@ function createSelectBuilder(
       limit: state.limit,
     });
 
-  const builder = {
+  const builder: ThenableQuery = {
     where(condition: unknown) {
       state.filter = parseWhereFilter(condition);
       return builder;
@@ -234,13 +256,7 @@ function createSelectBuilder(
       return run().then(onFulfilled as never, onRejected as never);
     },
   };
-  return builder as ThenableQuery;
-}
-
-function unsupportedDbMethod(prop: string | symbol): never {
-  throw new Error(
-    `Convex driver does not support db.${String(prop)} — only insert, select, update, and delete.`,
-  );
+  return guardBuilder(builder, "select");
 }
 
 /**
@@ -253,21 +269,24 @@ export function createConvexDb(options: CreateConvexDbOptions = {}) {
 
   const db = {
     insert(table: unknown) {
-      return {
-        values(values: Record<string, unknown> | Record<string, unknown>[]) {
-          const rows = Array.isArray(values) ? values : [values];
-          const tableName = tableNameOf(table);
-          return Promise.all(
-            rows.map((row) =>
-              transport.mutation("insert", {
-                tableName,
-                rowKey: rowKeyOf(row),
-                data: row,
-              }),
-            ),
-          ).then(() => undefined);
+      return guardBuilder(
+        {
+          values(values: Record<string, unknown> | Record<string, unknown>[]) {
+            const rows = Array.isArray(values) ? values : [values];
+            const tableName = tableNameOf(table);
+            return Promise.all(
+              rows.map((row) =>
+                transport.mutation("insert", {
+                  tableName,
+                  rowKey: rowKeyOf(row),
+                  data: row,
+                }),
+              ),
+            ).then(() => undefined);
+          },
         },
-      };
+        "insert",
+      );
     },
     select(fields?: unknown) {
       if (fields !== undefined) {
@@ -275,50 +294,52 @@ export function createConvexDb(options: CreateConvexDbOptions = {}) {
           "Convex driver only supports select() without column projections.",
         );
       }
-      return {
-        from(table: unknown) {
-          return createSelectBuilder(transport, table);
+      return guardBuilder(
+        {
+          from(table: unknown) {
+            return createSelectBuilder(transport, table);
+          },
         },
-      };
+        "select",
+      );
     },
     update(table: unknown) {
-      return {
-        set(patch: Record<string, unknown>) {
-          return {
-            where(condition: unknown) {
-              return transport.mutation("update", {
-                tableName: tableNameOf(table),
-                filter: parseWhereFilter(condition),
-                patch,
-              });
-            },
-          };
+      return guardBuilder(
+        {
+          set(patch: Record<string, unknown>) {
+            return guardBuilder(
+              {
+                where(condition: unknown) {
+                  return transport.mutation("update", {
+                    tableName: tableNameOf(table),
+                    filter: parseWhereFilter(condition),
+                    patch,
+                  });
+                },
+              },
+              "update.set",
+            );
+          },
         },
-      };
+        "update",
+      );
     },
     delete(table: unknown) {
-      return {
-        where(condition: unknown) {
-          return transport.mutation("remove", {
-            tableName: tableNameOf(table),
-            filter: parseWhereFilter(condition),
-          });
+      return guardBuilder(
+        {
+          where(condition: unknown) {
+            return transport.mutation("remove", {
+              tableName: tableNameOf(table),
+              filter: parseWhereFilter(condition),
+            });
+          },
         },
-      };
+        "delete",
+      );
     },
   };
 
-  return new Proxy(db, {
-    get(target, prop, receiver) {
-      if (prop in target) {
-        return Reflect.get(target, prop, receiver);
-      }
-      if (typeof prop === "symbol") {
-        return Reflect.get(target, prop, receiver);
-      }
-      return unsupportedDbMethod(prop);
-    },
-  });
+  return guardBuilder(db, "db");
 }
 
 export type ConvexDb = ReturnType<typeof createConvexDb>;

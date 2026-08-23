@@ -629,9 +629,17 @@ export function createGetDb<T extends Record<string, unknown>>(schema: T) {
           const promise = ready.then(() => {
             let result: any = _db;
             for (const step of chain) {
-              const val = result[step.prop];
+              const val = result?.[step.prop];
+              if (val === undefined) {
+                throw new Error(
+                  `Database client does not support .${String(step.prop)} — ` +
+                    `method is missing on the resolved driver.`,
+                );
+              }
               result =
-                typeof val === "function" ? val.apply(result, step.args) : val;
+                typeof val === "function"
+                  ? val.apply(result, step.args ?? [])
+                  : val;
             }
             return result;
           });

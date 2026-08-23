@@ -62,6 +62,28 @@ describe("createGetDb Convex dialect", () => {
     const { parseWhereFilter } = await import("./convex-db.js");
     expect(() => parseWhereFilter({})).toThrow(/non-empty filter|empty object/);
   });
+
+  it("throws on unsupported select builder methods", async () => {
+    const { createConvexDb, setConvexDbTestTransport } =
+      await import("./convex-db.js");
+    setConvexDbTestTransport({
+      query: async () => [],
+      mutation: async () => null,
+    });
+    const { sqliteTable, text } = await import("drizzle-orm/sqlite-core");
+    const notes = sqliteTable("notes", {
+      id: text("id").primaryKey(),
+      body: text("body"),
+    });
+    const db = createConvexDb();
+    const q = db.select().from(notes) as { orderBy: () => unknown };
+    expect(() => q.orderBy()).toThrow(/orderBy|does not support/);
+    expect(() =>
+      (
+        db.insert(notes) as { onConflictDoNothing: () => unknown }
+      ).onConflictDoNothing(),
+    ).toThrow(/onConflict|does not support/);
+  });
 });
 
 describe("@agent-native/core/db public entry", () => {

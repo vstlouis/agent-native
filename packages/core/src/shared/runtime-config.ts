@@ -161,6 +161,16 @@ function isLocalDatabaseUrl(url: string): boolean {
   ) {
     return false;
   }
+  if (normalized.startsWith("https://") || normalized.startsWith("http://")) {
+    try {
+      const host = new URL(normalized).hostname;
+      if (host.endsWith(".convex.cloud") || host.endsWith(".convex.site")) {
+        return false;
+      }
+    } catch {
+      // fall through
+    }
+  }
   return (
     url === "" ||
     url.startsWith("file:") ||

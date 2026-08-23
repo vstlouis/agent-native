@@ -52,11 +52,22 @@ function isPgliteUrl(url: string): boolean {
 /** Mirror of `isConvexDatabaseUrl` in db/client — keep drizzle-kit side-effect-free. */
 function isConvexDatabaseUrl(url: string): boolean {
   const normalized = url.trim().toLowerCase();
-  return (
+  if (
     normalized === "convex" ||
     normalized.startsWith("convex:") ||
     normalized.startsWith("convex://")
-  );
+  ) {
+    return true;
+  }
+  if (normalized.startsWith("https://") || normalized.startsWith("http://")) {
+    try {
+      const host = new URL(normalized).hostname;
+      return host.endsWith(".convex.cloud") || host.endsWith(".convex.site");
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 function pgliteDataDirFromUrl(url: string): string {

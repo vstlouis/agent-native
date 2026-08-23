@@ -106,6 +106,20 @@ describe("db/client dialect detection", () => {
     expect(isLocalDatabase()).toBe(false);
   });
 
+  it("treats https://*.convex.cloud deployment URLs as convex, not libsql", async () => {
+    vi.stubEnv("DATABASE_URL", "https://happy-animal-123.convex.cloud");
+    const { getDialect, isConvexDatabaseUrl, isLocalSqliteUrl } =
+      await import("./client.js");
+    expect(isConvexDatabaseUrl("https://happy-animal-123.convex.cloud")).toBe(
+      true,
+    );
+    expect(isConvexDatabaseUrl("https://foo.convex.site")).toBe(true);
+    expect(isLocalSqliteUrl("https://happy-animal-123.convex.cloud")).toBe(
+      false,
+    );
+    expect(getDialect()).toBe("convex");
+  });
+
   it("does not treat legacy convex: as a sqlite filename", async () => {
     vi.stubEnv("DATABASE_URL", "convex:");
     const { getDialect, isLocalSqliteUrl } = await import("./client.js");

@@ -150,14 +150,28 @@ export function getMigrationDatabaseUrl(): string {
  * a deployment host). Also accepts `convex:` / `convex:https://…` so those
  * shapes never fall through to SQLite/libsql — but prefer documenting
  * `convex://` only (`convex:` has no `://` and used to be misread as a filename).
+ *
+ * Real deployment URLs (`https://*.convex.cloud`, `https://*.convex.site`) are
+ * Convex too — never hand them to `@libsql/client/web`.
  */
 export function isConvexDatabaseUrl(url: string): boolean {
   const normalized = url.trim().toLowerCase();
-  return (
+  if (
     normalized === "convex" ||
     normalized.startsWith("convex:") ||
     normalized.startsWith("convex://")
-  );
+  ) {
+    return true;
+  }
+  if (normalized.startsWith("https://") || normalized.startsWith("http://")) {
+    try {
+      const host = new URL(normalized).hostname;
+      return host.endsWith(".convex.cloud") || host.endsWith(".convex.site");
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 export function isLocalSqliteUrl(url: string): boolean {
