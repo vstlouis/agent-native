@@ -491,8 +491,9 @@ export function isPostgres(): boolean {
 export function assertSqlDialect(api: string): void {
   if (getDialect() === "convex") {
     throw new Error(
-      `${api} is not supported for the Convex driver — use createGetDb ` +
-        `insert/select/update/delete (component schema in @agent-native/db-convex).`,
+      `${api} is not supported for the Convex dialect. The spike only covers ` +
+        `createGetDb insert/select/update/delete with an injected transport ` +
+        `(component schema in @agent-native/db-convex).`,
     );
   }
 }

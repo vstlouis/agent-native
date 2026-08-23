@@ -31,13 +31,9 @@ export async function createDb(config: DbConfig) {
 export type DrizzleDb = Awaited<ReturnType<typeof createDb>>;
 
 export { createGetDb } from "./create-get-db.js";
-export {
-  createConvexDb,
-  setConvexDbTestTransport,
-  type ConvexDb,
-  type ConvexDbTransport,
-  type CreateConvexDbOptions,
-} from "./convex-db.js";
+// Convex client (createConvexDb) is NOT re-exported here: a static import of
+// ./convex-db.js would pull optional convex into every `@agent-native/core/db`
+// consumer. createGetDb loads it only via dynamic import when dialect is convex.
 export {
   deferMigration,
   MIGRATION_DEFERRED,

@@ -1700,6 +1700,14 @@ export async function configureLocalSqlite(sqlite: {
 export async function buildDatabaseConfig(
   dialect: string,
 ): Promise<BetterAuthOptions["database"]> {
+  if (dialect === "convex") {
+    throw new Error(
+      "Better Auth is not supported with the Convex database dialect " +
+        "(DATABASE_URL=convex:). Use sqlite, postgres, or d1 for auth — " +
+        "do not fall through to a file:convex: SQLite path.",
+    );
+  }
+
   if (dialect === "postgres") {
     const url = getDatabaseUrl();
     const {

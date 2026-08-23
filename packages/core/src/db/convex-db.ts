@@ -1,4 +1,3 @@
-import { ConvexHttpClient } from "convex/browser";
 import { getTableName } from "drizzle-orm";
 
 /**
@@ -6,6 +5,11 @@ import { getTableName } from "drizzle-orm";
  * branches in create-get-db.ts: a dialect-specific client, not a sibling db
  * package. The publishable Convex *component* (tables + mutations) lives in
  * `@agent-native/db-convex`; this file is only the Node-side caller.
+ *
+ * There is no default Node HTTP transport: ConvexHttpClient cannot legally
+ * invoke internal component function refs from Node. Callers must inject a
+ * transport (tests: setConvexDbTestTransport / convex-test; hosts: pass
+ * CreateConvexDbOptions.transport).
  */
 
 export type ConvexDbTransport = {
@@ -24,11 +28,8 @@ export type ConvexDbTransport = {
 };
 
 export type CreateConvexDbOptions = {
-  convexUrl?: string;
+  /** Host- or test-provided transport. Required outside setConvexDbTestTransport. */
   transport?: ConvexDbTransport;
-  /** Mount name from the app's `app.use(...)` — default `agentNativeDb`. */
-  componentName?: string;
-  adminAuth?: string;
 };
 
 const TEST_TRANSPORT_GLOBAL = Symbol.for(
@@ -50,62 +51,17 @@ function readTestTransport(): ConvexDbTransport | undefined {
   ];
 }
 
-export function isConvexDatabaseUrl(url: string): boolean {
-  return (
-    url === "convex" ||
-    url === "convex:" ||
-    url.startsWith("convex:") ||
-    url.startsWith("convex://")
-  );
-}
-
-export function resolveConvexDeploymentUrl(
-  databaseUrl = "",
-  explicit?: string,
-): string {
-  if (explicit) return explicit;
-  if (databaseUrl.startsWith("convex://")) {
-    return `https://${databaseUrl.slice("convex://".length)}`;
-  }
-  if (
-    databaseUrl.startsWith("convex:") &&
-    databaseUrl.length > "convex:".length
-  ) {
-    const rest = databaseUrl.slice("convex:".length);
-    if (rest.startsWith("https://") || rest.startsWith("http://")) return rest;
-  }
-  const fromEnv =
-    process.env.CONVEX_URL ||
-    process.env.NEXT_PUBLIC_CONVEX_URL ||
-    process.env.VITE_CONVEX_URL ||
-    "";
-  if (fromEnv) return fromEnv;
+function requireTransport(options: CreateConvexDbOptions): ConvexDbTransport {
+  if (options.transport) return options.transport;
+  const test = readTestTransport();
+  if (test) return test;
   throw new Error(
-    "Convex driver needs CONVEX_URL (or DATABASE_URL=convex:https://….convex.cloud).",
+    "Convex dialect has no Node HTTP path to internal component functions. " +
+      "ConvexHttpClient cannot call refs like `<component>/rows:insert` from Node. " +
+      "Pass CreateConvexDbOptions.transport from the host, or call " +
+      "setConvexDbTestTransport(...) in tests (e.g. convex-test against " +
+      "@agent-native/db-convex).",
   );
-}
-
-function createHttpTransport(
-  convexUrl: string,
-  componentName: string,
-  adminAuth?: string,
-): ConvexDbTransport {
-  const client = new ConvexHttpClient(convexUrl);
-  if (adminAuth) {
-    (client as { setAdminAuth?: (token: string) => void }).setAdminAuth?.(
-      adminAuth,
-    );
-  }
-  const call = client as {
-    query: (ref: never, args: never) => Promise<unknown>;
-    mutation: (ref: never, args: never) => Promise<unknown>;
-  };
-  const ref = (fn: string) => `${componentName}/rows:${fn}` as never;
-  return {
-    query: (fn, args) =>
-      call.query(ref(fn), args as never) as Promise<Record<string, unknown>[]>,
-    mutation: (fn, args) => call.mutation(ref(fn), args as never),
-  };
 }
 
 function tableNameOf(table: unknown): string {
@@ -130,7 +86,28 @@ function rowKeyOf(row: Record<string, unknown>): string {
   return String(key);
 }
 
-/** Supports drizzle `eq(col, val)` or a plain `{ column: value }` object. */
+function isDrizzleSql(value: object): boolean {
+  return (
+    "queryChunks" in value ||
+    "decoder" in value ||
+    Symbol.for("drizzle:QueryPromise") in value
+  );
+}
+
+function isStringChunk(chunk: object): chunk is { value: string[] } {
+  return (
+    Array.isArray((chunk as { value?: unknown }).value) &&
+    (chunk as { value: unknown[] }).value.every((v) => typeof v === "string") &&
+    !("encoder" in chunk) &&
+    !("table" in chunk) &&
+    !("queryChunks" in chunk)
+  );
+}
+
+/**
+ * Supports drizzle `eq(col, val)` or a plain `{ column: value }` object.
+ * Throws on and/or/not/gt/neq/composites — never silently keeps the first eq.
+ */
 export function parseWhereFilter(condition: unknown): Record<string, unknown> {
   if (
     condition &&
@@ -151,37 +128,67 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
   let column: string | undefined;
   let value: unknown;
   let sawValue = false;
+  let operator: string | undefined;
+
   for (const chunk of chunks) {
     if (!chunk || typeof chunk !== "object") continue;
-    const col = chunk as { name?: unknown; table?: unknown };
+
+    // Nested SQL = and/or/not/composites — refuse rather than taking the first eq.
     if (
-      typeof col.name === "string" &&
-      "table" in col &&
-      column === undefined
+      "queryChunks" in chunk &&
+      Array.isArray((chunk as { queryChunks: unknown[] }).queryChunks)
     ) {
+      throw new Error(
+        "Convex driver where() only supports a single eq(column, value); and/or/not/composites are not supported.",
+      );
+    }
+
+    const col = chunk as { name?: unknown; table?: unknown };
+    if (typeof col.name === "string" && "table" in col) {
+      if (column !== undefined) {
+        throw new Error(
+          "Convex driver where() only supports a single eq(column, value).",
+        );
+      }
       column = col.name;
       continue;
     }
+
+    if (isStringChunk(chunk)) {
+      const text = chunk.value.join("");
+      if (text.trim() === "") continue;
+      if (operator !== undefined) {
+        throw new Error(
+          "Convex driver where() only supports a single eq(column, value).",
+        );
+      }
+      operator = text;
+      continue;
+    }
+
     const param = chunk as { value?: unknown; encoder?: unknown };
-    if ("encoder" in param && "value" in param && !sawValue) {
+    if ("encoder" in param && "value" in param) {
+      if (sawValue) {
+        throw new Error(
+          "Convex driver where() only supports a single eq(column, value).",
+        );
+      }
       value = param.value;
       sawValue = true;
     }
   }
-  if (!column) {
+
+  if (!column || !sawValue) {
     throw new Error(
-      "Convex driver could not parse column from where() (expected drizzle eq()).",
+      "Convex driver could not parse where() (expected drizzle eq(column, value)).",
+    );
+  }
+  if (operator === undefined || operator.trim() !== "=") {
+    throw new Error(
+      `Convex driver where() only supports eq(column, value); got operator ${JSON.stringify(operator?.trim() ?? "(none)")}.`,
     );
   }
   return { [column]: value };
-}
-
-function isDrizzleSql(value: object): boolean {
-  return (
-    "queryChunks" in value ||
-    "decoder" in value ||
-    Symbol.for("drizzle:QueryPromise") in value
-  );
 }
 
 type ThenableQuery = PromiseLike<Record<string, unknown>[]> & {
@@ -224,25 +231,21 @@ function createSelectBuilder(
   return builder as ThenableQuery;
 }
 
+function unsupportedDbMethod(prop: string | symbol): never {
+  throw new Error(
+    `Convex driver does not support db.${String(prop)} — only insert, select, update, and delete.`,
+  );
+}
+
 /**
  * Drizzle-shaped client for the Convex dialect: insert / select / update /
  * delete. Raw SQL and migrations are refused at getDbExec / runMigrations.
+ * Missing methods throw (including via createGetDb's lazy replay proxy).
  */
 export function createConvexDb(options: CreateConvexDbOptions = {}) {
-  const componentName = options.componentName ?? "agentNativeDb";
-  const transport =
-    options.transport ??
-    readTestTransport() ??
-    createHttpTransport(
-      resolveConvexDeploymentUrl(
-        process.env.DATABASE_URL ?? "",
-        options.convexUrl,
-      ),
-      componentName,
-      options.adminAuth ?? process.env.CONVEX_DEPLOY_KEY,
-    );
+  const transport = requireTransport(options);
 
-  return {
+  const db = {
     insert(table: unknown) {
       return {
         values(values: Record<string, unknown> | Record<string, unknown>[]) {
@@ -260,7 +263,12 @@ export function createConvexDb(options: CreateConvexDbOptions = {}) {
         },
       };
     },
-    select(_fields?: unknown) {
+    select(fields?: unknown) {
+      if (fields !== undefined) {
+        throw new Error(
+          "Convex driver only supports select() without column projections.",
+        );
+      }
       return {
         from(table: unknown) {
           return createSelectBuilder(transport, table);
@@ -293,6 +301,18 @@ export function createConvexDb(options: CreateConvexDbOptions = {}) {
       };
     },
   };
+
+  return new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop in target) {
+        return Reflect.get(target, prop, receiver);
+      }
+      if (typeof prop === "symbol") {
+        return Reflect.get(target, prop, receiver);
+      }
+      return unsupportedDbMethod(prop);
+    },
+  });
 }
 
 export type ConvexDb = ReturnType<typeof createConvexDb>;
