@@ -1,7 +1,8 @@
 {
   "name": "@agent-native/db-convex",
   "version": "0.0.0",
-  "description": "Publishable Convex component for the agent-native Convex db dialect (tables + mutations). The Node client lives in @agent-native/core/db.",
+  "private": true,
+  "description": "Workspace Convex component for the agent-native Convex db dialect (tables + mutations). The Node client lives in @agent-native/core/db.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,6 +16,7 @@
     "src"
   ],
   "exports": {
+    ".": "./src/component/convex.config.ts",
     "./convex.config": {
       "types": "./dist/component/convex.config.d.ts",
       "default": "./dist/component/convex.config.js"

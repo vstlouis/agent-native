@@ -84,6 +84,67 @@ describe("createGetDb Convex dialect", () => {
       ).onConflictDoNothing(),
     ).toThrow(/onConflict|does not support/);
   });
+
+  it("refuses duplicate insert for the same table key", async () => {
+    const { convexTest } = await import("convex-test");
+    const { api, modules, schema } =
+      await import("@agent-native/db-convex/test");
+    const { createConvexDb, setConvexDbTestTransport } =
+      await import("./convex-db.js");
+
+    const t = convexTest(schema, modules);
+    setConvexDbTestTransport({
+      query: (fn, args) =>
+        t.query(api.rows[fn], args) as Promise<Record<string, unknown>[]>,
+      mutation: (fn, args) => t.mutation(api.rows[fn], args as never),
+    });
+
+    const { sqliteTable, text } = await import("drizzle-orm/sqlite-core");
+    const notes = sqliteTable("notes", {
+      id: text("id").primaryKey(),
+      body: text("body").notNull(),
+    });
+    const db = createConvexDb();
+    await db.insert(notes).values({ id: "n1", body: "one" });
+    await expect(
+      db.insert(notes).values({ id: "n1", body: "two" }),
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it("matches eq(jsKey) against snake_case stored fields", async () => {
+    const { convexTest } = await import("convex-test");
+    const { api, modules, schema } =
+      await import("@agent-native/db-convex/test");
+    const { setConvexDbTestTransport, parseWhereFilter } =
+      await import("./convex-db.js");
+    const { eq } = await import("drizzle-orm");
+    const { sqliteTable, text } = await import("drizzle-orm/sqlite-core");
+
+    const notes = sqliteTable("notes", {
+      id: text("id").primaryKey(),
+      ownerEmail: text("owner_email"),
+    });
+    const filter = parseWhereFilter(eq(notes.ownerEmail, "a@b.c"));
+    expect(filter).toMatchObject({ ownerEmail: "a@b.c" });
+    expect(filter.owner_email).toBe("a@b.c");
+
+    const t = convexTest(schema, modules);
+    setConvexDbTestTransport({
+      query: (fn, args) =>
+        t.query(api.rows[fn], args) as Promise<Record<string, unknown>[]>,
+      mutation: (fn, args) => t.mutation(api.rows[fn], args as never),
+    });
+    await t.mutation(api.rows.insert, {
+      tableName: "notes",
+      rowKey: "1",
+      data: { id: "1", owner_email: "a@b.c" },
+    });
+    const rows = await t.query(api.rows.list, {
+      tableName: "notes",
+      filter,
+    });
+    expect(rows).toEqual([{ id: "1", owner_email: "a@b.c" }]);
+  });
 });
 
 describe("@agent-native/core/db public entry", () => {

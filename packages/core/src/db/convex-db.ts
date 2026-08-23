@@ -104,6 +104,32 @@ function isStringChunk(chunk: object): chunk is { value: string[] } {
   );
 }
 
+/** Prefer drizzle JS property key; keep SQL `.name` as an alias for matching. */
+function drizzleColumnKeys(col: { name?: unknown; table?: unknown }): {
+  jsKey: string;
+  sqlName: string;
+} {
+  const sqlName = typeof col.name === "string" ? col.name : "";
+  let jsKey = sqlName;
+  const table = col.table;
+  if (table && typeof table === "object") {
+    for (const [key, value] of Object.entries(
+      table as Record<string, unknown>,
+    )) {
+      if (value === col) {
+        jsKey = key;
+        break;
+      }
+    }
+  }
+  if (!jsKey && !sqlName) {
+    throw new Error(
+      "Convex driver could not read column key from where() (expected drizzle eq()).",
+    );
+  }
+  return { jsKey: jsKey || sqlName, sqlName: sqlName || jsKey };
+}
+
 /**
  * Supports drizzle `eq(col, val)` or a plain `{ column: value }` object.
  * Throws on and/or/not/gt/neq/composites — never silently keeps the first eq.
@@ -131,7 +157,8 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
     );
   }
 
-  let column: string | undefined;
+  let jsKey: string | undefined;
+  let sqlName: string | undefined;
   let value: unknown;
   let sawValue = false;
   let operator: string | undefined;
@@ -151,12 +178,14 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
 
     const col = chunk as { name?: unknown; table?: unknown };
     if (typeof col.name === "string" && "table" in col) {
-      if (column !== undefined) {
+      if (jsKey !== undefined) {
         throw new Error(
           "Convex driver where() only supports a single eq(column, value).",
         );
       }
-      column = col.name;
+      const keys = drizzleColumnKeys(col);
+      jsKey = keys.jsKey;
+      sqlName = keys.sqlName;
       continue;
     }
 
@@ -184,7 +213,7 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
     }
   }
 
-  if (!column || !sawValue) {
+  if (!jsKey || !sawValue) {
     throw new Error(
       "Convex driver could not parse where() (expected drizzle eq(column, value)).",
     );
@@ -194,7 +223,13 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
       `Convex driver where() only supports eq(column, value); got operator ${JSON.stringify(operator?.trim() ?? "(none)")}.`,
     );
   }
-  return { [column]: value };
+  // Primary key is the drizzle JS property; include SQL `.name` when different
+  // so component matching can hit either spelling on stored rows.
+  const filter: Record<string, unknown> = { [jsKey]: value };
+  if (sqlName && sqlName !== jsKey) {
+    filter[sqlName] = value;
+  }
+  return filter;
 }
 
 type ThenableQuery = PromiseLike<Record<string, unknown>[]> & {

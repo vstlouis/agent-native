@@ -31,6 +31,7 @@ const workspaceOnlyPackageAllowlist = new Set([
   "@agent-native/frame",
   "@agent-native/mobile-app",
   "@agent-native/code-agents-ui",
+  "@agent-native/db-convex",
   "@agent-native/embedding",
   "@agent-native/migrate",
   "@agent-native/shared-app-config",

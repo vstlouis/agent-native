@@ -10,6 +10,42 @@ function assertNonEmptyFilter(filter: Record<string, unknown>): void {
   }
 }
 
+function toSnakeCase(key: string): string {
+  return key.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`);
+}
+
+function toCamelCase(key: string): string {
+  return key.replace(/_([a-z])/g, (_, ch: string) => ch.toUpperCase());
+}
+
+/** Match filter keys against row data under either JS or SQL spelling. */
+function fieldEquals(
+  data: Record<string, unknown> | undefined,
+  key: string,
+  value: unknown,
+): boolean {
+  if (!data) return false;
+  const candidates = new Set<string>([key, toSnakeCase(key), toCamelCase(key)]);
+  for (const candidate of candidates) {
+    if (
+      Object.prototype.hasOwnProperty.call(data, candidate) &&
+      data[candidate] === value
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rowMatchesFilter(
+  data: Record<string, unknown> | undefined,
+  filter: Record<string, unknown>,
+): boolean {
+  return Object.entries(filter).every(([key, value]) =>
+    fieldEquals(data, key, value),
+  );
+}
+
 export const insert = mutation({
   args: {
     tableName: v.string(),
@@ -25,8 +61,9 @@ export const insert = mutation({
       )
       .unique();
     if (existing) {
-      await ctx.db.patch(existing._id, { data: args.data });
-      return null;
+      throw new Error(
+        `Convex insert refused: row already exists for table "${args.tableName}" key "${args.rowKey}".`,
+      );
     }
     await ctx.db.insert("rows", {
       tableName: args.tableName,
@@ -52,11 +89,7 @@ export const list = query({
     if (args.filter !== undefined) {
       assertNonEmptyFilter(args.filter);
       const filter = args.filter;
-      rows = rows.filter((row) =>
-        Object.entries(filter).every(
-          ([key, value]) => row.data?.[key] === value,
-        ),
-      );
+      rows = rows.filter((row) => rowMatchesFilter(row.data, filter));
     }
     const docs = rows.map((row) => row.data);
     if (args.limit !== undefined) return docs.slice(0, args.limit);
@@ -79,10 +112,7 @@ export const update = mutation({
       .collect();
     let updated = 0;
     for (const row of rows) {
-      const matches = Object.entries(args.filter).every(
-        ([key, value]) => row.data?.[key] === value,
-      );
-      if (!matches) continue;
+      if (!rowMatchesFilter(row.data, args.filter)) continue;
       await ctx.db.patch(row._id, {
         data: { ...row.data, ...args.patch },
       });
@@ -106,10 +136,7 @@ export const remove = mutation({
       .collect();
     let removed = 0;
     for (const row of rows) {
-      const matches = Object.entries(args.filter).every(
-        ([key, value]) => row.data?.[key] === value,
-      );
-      if (!matches) continue;
+      if (!rowMatchesFilter(row.data, args.filter)) continue;
       await ctx.db.delete(row._id);
       removed += 1;
     }

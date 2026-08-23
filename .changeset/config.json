@@ -11,6 +11,7 @@
     "agent-native",
     "@agent-native/desktop-app",
     "@agent-native/code-agents-ui",
+    "@agent-native/db-convex",
     "@agent-native/shared-app-config",
     "@agent-native/embedding",
     "@agent-native/migrate"
