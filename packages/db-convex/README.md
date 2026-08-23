@@ -44,16 +44,9 @@ Peer-depends on `convex`.
 
 ## Enable the dialect
 
-Canonical opt-in (every helper agrees on this scheme):
-
 ```bash
 DATABASE_URL=convex://
 ```
-
-`convex://` includes `://`, so it is never treated as a local SQLite filename.
-Legacy forms `convex:` and `convex:https://…` are still recognized as the convex
-dialect so they cannot silently become a file named `convex:` or a libsql URL —
-prefer documenting and setting `convex://` only.
 
 `CONVEX_URL` alone does **not** switch dialects.
 

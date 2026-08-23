@@ -113,6 +113,27 @@ describe("db/client dialect detection", () => {
     expect(getDialect()).toBe("convex");
   });
 
+  it("createDbExec refuses config.url convex:// even when env is sqlite", async () => {
+    vi.stubEnv("DATABASE_URL", "file:./data/app.db");
+    const { createDbExec } = await import("./client.js");
+    await expect(createDbExec({ url: "convex://" })).rejects.toThrow(
+      /Convex config\.url|convex:\/\//,
+    );
+  });
+
+  it("createDbExec allows a SQL config.url when env is convex://", async () => {
+    vi.stubEnv("DATABASE_URL", "convex://");
+    const { createDbExec } = await import("./client.js");
+    const exec = await createDbExec({
+      url: "file:./data/convex-config-url-override.db",
+    });
+    try {
+      await exec.execute("select 1 as ok");
+    } finally {
+      await exec.close?.();
+    }
+  });
+
   it("uses Netlify's runtime database URL when DATABASE_URL is not exported", async () => {
     vi.stubEnv("DATABASE_URL", "");
     vi.stubEnv("NETLIFY_DATABASE_URL", "postgres://netlify.example/db");

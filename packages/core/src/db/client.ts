@@ -499,7 +499,7 @@ export function isPostgres(): boolean {
   return getDialect() === "postgres";
 }
 
-/** Precise failure for SQL-only APIs when DATABASE_URL selects Convex. */
+/** Precise failure for SQL-only APIs when the ambient DATABASE_URL is Convex. */
 export function assertSqlDialect(api: string): void {
   if (getDialect() === "convex") {
     throw new Error(
@@ -508,6 +508,20 @@ export function assertSqlDialect(api: string): void {
         `injected transport (component schema in @agent-native/db-convex).`,
     );
   }
+}
+
+/**
+ * Refuse Convex for createDbExec based on the URL this call will open
+ * (`config.url`), not ambient `getDialect()`. Env `convex://` + `{ url: file:… }`
+ * stays allowed; env sqlite + `{ url: convex:// }` must throw.
+ */
+function assertCreateDbExecSqlUrl(config: DbExecConfig): void {
+  if (dialectForConfig(config) !== "convex") return;
+  throw new Error(
+    "createDbExec is not supported for a Convex config.url (convex://). " +
+      "Pass a SQL url, or use createGetDb insert/select/update/delete with an " +
+      "injected transport — do not open SQLite/libsql against a convex URL.",
+  );
 }
 
 function dialectForConfig(config: DbExecConfig): Dialect {
@@ -1517,10 +1531,9 @@ async function createDbExecInternal(
 
   if (dialect === "convex") {
     throw new Error(
-      "createDbExec is not supported for the Convex dialect " +
-        "(DATABASE_URL=convex://). Use createGetDb insert/select/update/delete " +
-        "with an injected transport — do not open a SQLite file or libsql " +
-        "client against a convex URL.",
+      "createDbExec is not supported for a Convex config.url (convex://). " +
+        "Pass a SQL url, or use createGetDb insert/select/update/delete with an " +
+        "injected transport — do not open SQLite/libsql against a convex URL.",
     );
   }
 
@@ -2106,7 +2119,7 @@ async function createDbExecInternal(
 }
 
 export async function createDbExec(config: DbExecConfig = {}): Promise<DbExec> {
-  assertSqlDialect("createDbExec");
+  assertCreateDbExecSqlUrl(config);
   const exec = await createDbExecInternal(config, false);
   return guardSchemaMutations(exec);
 }

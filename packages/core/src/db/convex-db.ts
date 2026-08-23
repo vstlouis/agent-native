@@ -115,7 +115,13 @@ export function parseWhereFilter(condition: unknown): Record<string, unknown> {
     !Array.isArray(condition) &&
     !isDrizzleSql(condition)
   ) {
-    return { ...(condition as Record<string, unknown>) };
+    const filter = { ...(condition as Record<string, unknown>) };
+    if (Object.keys(filter).length === 0) {
+      throw new Error(
+        "Convex driver where() requires a non-empty filter; an empty object would match every row.",
+      );
+    }
+    return filter;
   }
 
   const chunks = (condition as { queryChunks?: unknown[] })?.queryChunks;

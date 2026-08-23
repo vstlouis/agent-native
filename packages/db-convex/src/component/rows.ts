@@ -2,6 +2,14 @@ import { v } from "convex/values";
 
 import { mutation, query } from "./_generated/server.js";
 
+function assertNonEmptyFilter(filter: Record<string, unknown>): void {
+  if (Object.keys(filter).length === 0) {
+    throw new Error(
+      "Convex rows refuse an empty filter (Object.entries({}).every is vacuously true and would match every row).",
+    );
+  }
+}
+
 export const insert = mutation({
   args: {
     tableName: v.string(),
@@ -41,7 +49,8 @@ export const list = query({
       .query("rows")
       .withIndex("by_table", (q) => q.eq("tableName", args.tableName))
       .collect();
-    if (args.filter) {
+    if (args.filter !== undefined) {
+      assertNonEmptyFilter(args.filter);
       const filter = args.filter;
       rows = rows.filter((row) =>
         Object.entries(filter).every(
@@ -63,6 +72,7 @@ export const update = mutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
+    assertNonEmptyFilter(args.filter);
     const rows = await ctx.db
       .query("rows")
       .withIndex("by_table", (q) => q.eq("tableName", args.tableName))
@@ -89,6 +99,7 @@ export const remove = mutation({
   },
   returns: v.number(),
   handler: async (ctx, args) => {
+    assertNonEmptyFilter(args.filter);
     const rows = await ctx.db
       .query("rows")
       .withIndex("by_table", (q) => q.eq("tableName", args.tableName))

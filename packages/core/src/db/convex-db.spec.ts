@@ -57,6 +57,11 @@ describe("createGetDb Convex dialect", () => {
       parseWhereFilter(and(eq(notes.id, "x"), eq(notes.n, 1))),
     ).toThrow(/and\/or\/not|eq\(column, value\)/);
   });
+
+  it("throws on an empty object filter", async () => {
+    const { parseWhereFilter } = await import("./convex-db.js");
+    expect(() => parseWhereFilter({})).toThrow(/non-empty filter|empty object/);
+  });
 });
 
 describe("@agent-native/core/db public entry", () => {
