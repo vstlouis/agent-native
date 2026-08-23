@@ -1,5 +1,6 @@
 import { getAppConfig } from "../app-config/index.js";
 import {
+  assertSqlDialect,
   getDbExec,
   createDbExec,
   isPostgres,
@@ -377,6 +378,7 @@ export function runMigrations(
   migrations: Array<MigrationEntry>,
   options: RunMigrationsOptions,
 ): NitroPluginDef {
+  assertSqlDialect("runMigrations");
   const table = options?.table;
   if (
     !table ||

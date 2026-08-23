@@ -23,7 +23,7 @@ const loggedNeonPools = new WeakSet<object>();
 // Types
 // ---------------------------------------------------------------------------
 
-export type Dialect = "sqlite" | "postgres" | "d1";
+export type Dialect = "sqlite" | "postgres" | "d1" | "convex";
 
 export interface DbExecQuery {
   sql: string;
@@ -453,6 +453,17 @@ export function getDialect(): Dialect {
     _dialect = "postgres";
     return _dialect;
   }
+  // Opt-in Convex driver: DATABASE_URL=convex: or convex://…
+  // (CONVEX_URL alone is not enough — apps may use Convex beside SQL.)
+  if (
+    url === "convex" ||
+    url === "convex:" ||
+    url.startsWith("convex:") ||
+    url.startsWith("convex://")
+  ) {
+    _dialect = "convex";
+    return _dialect;
+  }
   if (url && !url.startsWith("file:")) {
     // Remote libsql (e.g. Turso)
     _dialect = "sqlite";
@@ -474,6 +485,17 @@ export function getDialect(): Dialect {
 
 export function isPostgres(): boolean {
   return getDialect() === "postgres";
+}
+
+/** Precise failure for SQL-only APIs when DATABASE_URL selects Convex. */
+export function assertSqlDialect(api: string): void {
+  if (getDialect() === "convex") {
+    throw new Error(
+      `${api} is not supported for the Convex driver — define tables in the ` +
+        `@agent-native/db-convex component schema (or use createGetDb insert/select/update/delete). ` +
+        `# ponytail: SQL DDL/DML bridge on Convex, upgrade when the driver owns raw query execution.`,
+    );
+  }
 }
 
 function dialectForConfig(config: DbExecConfig): Dialect {
@@ -2060,6 +2082,7 @@ async function createDbExecInternal(
 }
 
 export async function createDbExec(config: DbExecConfig = {}): Promise<DbExec> {
+  assertSqlDialect("createDbExec");
   const exec = await createDbExecInternal(config, false);
   return guardSchemaMutations(exec);
 }
@@ -2144,6 +2167,7 @@ export function annotateMissingTable(err: unknown, sql: unknown): unknown {
 }
 
 export function getDbExec(): DbExec {
+  assertSqlDialect("getDbExec");
   if (_exec) return _exec;
 
   // Sanitize args: replace undefined with null (libsql rejects undefined)

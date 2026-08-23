@@ -1,0 +1,53 @@
+{
+  "name": "@agent-native/db-convex",
+  "version": "0.0.0",
+  "description": "Convex persistence driver for @agent-native/core/db \u2014 publishable Convex component + Drizzle-shaped client shim.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vstlouis/agent-native",
+    "directory": "packages/db-convex"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./test": "./src/test.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "convex": "^1.21.0",
+    "drizzle-orm": ">=0.40.0"
+  },
+  "devDependencies": {
+    "@agent-native/core": "workspace:*",
+    "@edge-runtime/vm": "^5.0.0",
+    "convex": "^1.21.0",
+    "convex-test": "^0.0.36",
+    "drizzle-orm": "^0.45.2",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.13.0"
+  }
+}

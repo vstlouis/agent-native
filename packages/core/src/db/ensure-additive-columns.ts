@@ -56,6 +56,7 @@
  */
 
 import {
+  assertSqlDialect,
   isPostgres,
   isProductionServerlessFunctionRuntime,
   type DbExec,
@@ -317,6 +318,7 @@ function describeSchemaDriftError(err: unknown): string {
 export async function ensureAdditiveColumns(
   options: EnsureAdditiveColumnsOptions,
 ): Promise<EnsureAdditiveColumnsResult> {
+  assertSqlDialect("ensureAdditiveColumns");
   const { db, tables, logger = defaultLogger } = options;
   if (isProductionServerlessFunctionRuntime()) {
     return { ...emptyResult(), mode: "skipped-serverless" };
