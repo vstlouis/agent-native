@@ -29,4 +29,12 @@ describe("createDrizzleConfig", () => {
       dbCredentials: { url: "memory://" },
     });
   });
+
+  it("refuses Convex DATABASE_URL instead of falling through to sqlite", async () => {
+    vi.stubEnv("DATABASE_URL", "convex://");
+
+    const { createDrizzleConfig } = await import("./drizzle-config.js");
+
+    expect(() => createDrizzleConfig()).toThrow(/Convex dialect/);
+  });
 });

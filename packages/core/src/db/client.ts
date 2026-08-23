@@ -145,7 +145,24 @@ export function getMigrationDatabaseUrl(): string {
   return url.replace(/-pooler(\.[a-z0-9.-]+\.neon\.tech)/, "$1");
 }
 
+/**
+ * Opt-in Convex dialect marker. Canonical form is `convex://` (with or without
+ * a deployment host). Also accepts `convex:` / `convex:https://…` so those
+ * shapes never fall through to SQLite/libsql — but prefer documenting
+ * `convex://` only (`convex:` has no `://` and used to be misread as a filename).
+ */
+export function isConvexDatabaseUrl(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  return (
+    normalized === "convex" ||
+    normalized.startsWith("convex:") ||
+    normalized.startsWith("convex://")
+  );
+}
+
 export function isLocalSqliteUrl(url: string): boolean {
+  // Convex markers must never become a local file named `convex:` / libsql URL.
+  if (isConvexDatabaseUrl(url)) return false;
   return url === "" || url.startsWith("file:") || !url.includes("://");
 }
 
@@ -453,14 +470,9 @@ export function getDialect(): Dialect {
     _dialect = "postgres";
     return _dialect;
   }
-  // Opt-in Convex driver: DATABASE_URL=convex: or convex://…
-  // (CONVEX_URL alone is not enough — apps may use Convex beside SQL.)
-  if (
-    url === "convex" ||
-    url === "convex:" ||
-    url.startsWith("convex:") ||
-    url.startsWith("convex://")
-  ) {
+  // Opt-in Convex driver: DATABASE_URL=convex://… (CONVEX_URL alone is not
+  // enough — apps may use Convex beside SQL.)
+  if (isConvexDatabaseUrl(url)) {
     _dialect = "convex";
     return _dialect;
   }
@@ -491,9 +503,9 @@ export function isPostgres(): boolean {
 export function assertSqlDialect(api: string): void {
   if (getDialect() === "convex") {
     throw new Error(
-      `${api} is not supported for the Convex dialect. The spike only covers ` +
-        `createGetDb insert/select/update/delete with an injected transport ` +
-        `(component schema in @agent-native/db-convex).`,
+      `${api} is not supported for the Convex dialect (DATABASE_URL=convex://). ` +
+        `The spike only covers createGetDb insert/select/update/delete with an ` +
+        `injected transport (component schema in @agent-native/db-convex).`,
     );
   }
 }
@@ -506,6 +518,9 @@ function dialectForConfig(config: DbExecConfig): Dialect {
     isPgliteUrl(url)
   ) {
     return "postgres";
+  }
+  if (isConvexDatabaseUrl(url)) {
+    return "convex";
   }
   if (url && !url.startsWith("file:")) {
     return "sqlite";
@@ -1499,6 +1514,15 @@ async function createDbExecInternal(
   trackSingletonResources = false,
 ): Promise<DbExec> {
   const dialect = dialectForConfig(config);
+
+  if (dialect === "convex") {
+    throw new Error(
+      "createDbExec is not supported for the Convex dialect " +
+        "(DATABASE_URL=convex://). Use createGetDb insert/select/update/delete " +
+        "with an injected transport — do not open a SQLite file or libsql " +
+        "client against a convex URL.",
+    );
+  }
 
   // Cloudflare D1
   if (dialect === "d1") {

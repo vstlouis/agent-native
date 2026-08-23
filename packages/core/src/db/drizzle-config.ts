@@ -49,6 +49,16 @@ function isPgliteUrl(url: string): boolean {
   return url.toLowerCase().startsWith("pglite:");
 }
 
+/** Mirror of `isConvexDatabaseUrl` in db/client — keep drizzle-kit side-effect-free. */
+function isConvexDatabaseUrl(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  return (
+    normalized === "convex" ||
+    normalized.startsWith("convex:") ||
+    normalized.startsWith("convex://")
+  );
+}
+
 function pgliteDataDirFromUrl(url: string): string {
   const raw = url.slice("pglite:".length);
   const dataDir = raw.startsWith("//") ? raw.slice(2) : raw;
@@ -150,6 +160,15 @@ export function createDrizzleConfig(
   const url = envUrl || `file:${sqliteFile}`;
   // URI schemes are case-insensitive per RFC 3986; normalize before matching.
   const scheme = url.toLowerCase();
+
+  if (isConvexDatabaseUrl(url)) {
+    throw new Error(
+      "createDrizzleConfig: DATABASE_URL selects the Convex dialect " +
+        "(convex://). Convex has no SQL migrations — define tables in " +
+        "@agent-native/db-convex instead of drizzle-kit.",
+    );
+  }
+
   const isPostgres =
     scheme.startsWith("postgres://") || scheme.startsWith("postgresql://");
   const isPglite = isPgliteUrl(url);

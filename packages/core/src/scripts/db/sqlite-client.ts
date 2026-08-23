@@ -1,5 +1,6 @@
 import {
   getDatabaseAuthToken,
+  isConvexDatabaseUrl,
   isLocalSqliteUrl,
   prepareLocalSqliteUrl,
   sqliteFilenameFromUrl,
@@ -34,6 +35,14 @@ function sqliteRowsToLibsqlShape(rows: unknown[]) {
 export async function createSqliteScriptClient(
   url: string,
 ): Promise<SqliteScriptClient> {
+  if (isConvexDatabaseUrl(url)) {
+    throw new Error(
+      "Agent db-* tools do not support the Convex dialect " +
+        "(DATABASE_URL=convex://). They speak SQL via SQLite/libsql/Postgres — " +
+        "refusing to open a file named convex: or a libsql client against a convex URL.",
+    );
+  }
+
   if (isLocalSqliteUrl(url)) {
     const sqliteUrl = await prepareLocalSqliteUrl(
       url.startsWith("file:") ? url : `file:${url}`,

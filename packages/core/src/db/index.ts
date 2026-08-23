@@ -49,6 +49,7 @@ export {
   getDatabaseUrl,
   getDialect,
   assertSqlDialect,
+  isConvexDatabaseUrl,
   isLocalDatabase,
   isPostgres,
   assertSchemaMutationAllowed,

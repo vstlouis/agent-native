@@ -27,10 +27,9 @@ throws a precise error.
 These are out of scope for this spike (and throw or are unsupported):
 
 - Boot plugins / a full running agent-native app on Convex
-- `getDbExec` / raw SQL
-- `runMigrations` / `ensureAdditiveColumns`
+- `getDbExec` / raw SQL / agent `db-*` tools
+- `runMigrations` / `ensureAdditiveColumns` / drizzle-kit
 - Better Auth (convex dialect fails loudly in `buildDatabaseConfig`)
-- Agent `db-*` tools that assume SQL
 - Templates / SQL migrations
 
 Define rows in this component's schema (or extend it) instead of SQL migrations.
@@ -45,11 +44,17 @@ Peer-depends on `convex`.
 
 ## Enable the dialect
 
+Canonical opt-in (every helper agrees on this scheme):
+
 ```bash
-DATABASE_URL=convex:
+DATABASE_URL=convex://
 ```
 
-`DATABASE_URL=convex:https://….convex.cloud` also selects the dialect.
+`convex://` includes `://`, so it is never treated as a local SQLite filename.
+Legacy forms `convex:` and `convex:https://…` are still recognized as the convex
+dialect so they cannot silently become a file named `convex:` or a libsql URL —
+prefer documenting and setting `convex://` only.
+
 `CONVEX_URL` alone does **not** switch dialects.
 
 Selecting the dialect alone is not enough to talk to a deployment — you still

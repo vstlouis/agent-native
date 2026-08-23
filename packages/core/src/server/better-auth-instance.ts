@@ -35,6 +35,7 @@ import {
   getDatabaseAuthToken,
   closePgliteClients,
   getPgliteClient,
+  isLocalSqliteUrl,
   isPgliteUrl,
   loadPgliteDrizzle,
   pgPoolOptions,
@@ -1703,8 +1704,8 @@ export async function buildDatabaseConfig(
   if (dialect === "convex") {
     throw new Error(
       "Better Auth is not supported with the Convex database dialect " +
-        "(DATABASE_URL=convex:). Use sqlite, postgres, or d1 for auth — " +
-        "do not fall through to a file:convex: SQLite path.",
+        "(DATABASE_URL=convex://). Use sqlite, postgres, or d1 for auth — " +
+        "do not fall through to a file named convex: or a libsql client.",
     );
   }
 
@@ -1796,7 +1797,7 @@ export async function buildDatabaseConfig(
   // SQLite / libsql
   const url = getDatabaseUrl("file:./data/app.db");
 
-  if (url.startsWith("file:") || !url.includes("://")) {
+  if (isLocalSqliteUrl(url)) {
     // Local SQLite via better-sqlite3
     const { default: Database } = await import("better-sqlite3");
     const sqliteUrl = await prepareLocalSqliteUrl(

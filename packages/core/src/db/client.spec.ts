@@ -90,6 +90,29 @@ describe("db/client dialect detection", () => {
     expect(getDialect()).toBe("sqlite");
   });
 
+  it("detects convex dialect from convex:// and never treats it as local sqlite", async () => {
+    vi.stubEnv("DATABASE_URL", "convex://");
+    const {
+      getDialect,
+      isConvexDatabaseUrl,
+      isLocalSqliteUrl,
+      isLocalDatabase,
+    } = await import("./client.js");
+    expect(isConvexDatabaseUrl("convex://")).toBe(true);
+    expect(isConvexDatabaseUrl("convex:")).toBe(true);
+    expect(isLocalSqliteUrl("convex://")).toBe(false);
+    expect(isLocalSqliteUrl("convex:")).toBe(false);
+    expect(getDialect()).toBe("convex");
+    expect(isLocalDatabase()).toBe(false);
+  });
+
+  it("does not treat legacy convex: as a sqlite filename", async () => {
+    vi.stubEnv("DATABASE_URL", "convex:");
+    const { getDialect, isLocalSqliteUrl } = await import("./client.js");
+    expect(isLocalSqliteUrl("convex:")).toBe(false);
+    expect(getDialect()).toBe("convex");
+  });
+
   it("uses Netlify's runtime database URL when DATABASE_URL is not exported", async () => {
     vi.stubEnv("DATABASE_URL", "");
     vi.stubEnv("NETLIFY_DATABASE_URL", "postgres://netlify.example/db");

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 describe("createGetDb Convex dialect", () => {
   beforeEach(() => {
     vi.resetModules();
-    vi.stubEnv("DATABASE_URL", "convex:");
+    vi.stubEnv("DATABASE_URL", "convex://");
   });
 
   afterEach(async () => {

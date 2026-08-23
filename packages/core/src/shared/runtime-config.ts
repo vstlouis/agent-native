@@ -153,6 +153,14 @@ function configuredKey(
 }
 
 function isLocalDatabaseUrl(url: string): boolean {
+  const normalized = url.trim().toLowerCase();
+  if (
+    normalized === "convex" ||
+    normalized.startsWith("convex:") ||
+    normalized.startsWith("convex://")
+  ) {
+    return false;
+  }
   return (
     url === "" ||
     url.startsWith("file:") ||
